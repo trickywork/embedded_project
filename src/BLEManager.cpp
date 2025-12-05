@@ -11,6 +11,12 @@
 #include "ble/BLE.h"
 #include "ble/Gap.h"
 #include "ble/GattServer.h"
+#include "ble/gatt/GattCharacteristic.h"
+#include "ble/gatt/GattService.h"
+#include "ble/common/UUID.h"
+#include "ble/gap/AdvertisingDataSimpleBuilder.h"
+#include "ble/gap/AdvertisingParameters.h"
+#include "ble/common/BLETypes.h"
 #endif
 
 /**
@@ -25,6 +31,13 @@ BLEManager::BLEManager() : initialized(false), simulationMode(false) {
     dyskinesiaIntensityByte = 0;
     fogStatus = 0;
     fogIntensityByte = 0;
+    #ifdef MBED_OS
+    ble = nullptr;
+    tremorChar = nullptr;
+    dyskinesiaChar = nullptr;
+    fogChar = nullptr;
+    symptomService = nullptr;
+    #endif
 }
 
 /**
@@ -43,33 +56,63 @@ BLEManager::BLEManager() : initialized(false), simulationMode(false) {
  */
 bool BLEManager::begin() {
     #ifdef MBED_OS
-        // Get BLE instance
-        ble = &BLE::Instance();
+        using namespace ble;
+        
+        // Get BLE instance (cast void* to ble::BLE*)
+        BLE* bleInstance = &BLE::Instance();
+        this->ble = static_cast<void*>(bleInstance);
         
         // Initialize BLE stack
-        ble_error_t error = ble->init();
+        ble_error_t error = bleInstance->init();
         if (error != BLE_ERROR_NONE) {
             printf("BLE initialization failed: %d\r\n", error);
             return false;
         }
         
         // Configure GAP (Generic Access Profile) parameters
-        // Set device name that will appear in BLE scans
-        ble->gap().setDeviceName((const uint8_t*)DEVICE_NAME);
         // Set advertising parameters (connectable, undirected)
-        ble->gap().setAdvertisingParameters(
-            GapAdvertisingParams(GapAdvertisingParams::ADV_CONNECTABLE_UNDIRECTED)
-        );
+        AdvertisingParameters advParams;
+        advParams.setType(advertising_type_t::CONNECTABLE_UNDIRECTED);
+        error = bleInstance->gap().setAdvertisingParameters(LEGACY_ADVERTISING_HANDLE, advParams);
+        if (error != BLE_ERROR_NONE) {
+            printf("Failed to set advertising parameters: %d\r\n", error);
+            return false;
+        }
         
-        // Create UUIDs for service and characteristics
-        UUID serviceUUID(SERVICE_UUID, sizeof(SERVICE_UUID));
-        UUID tremorUUID(TREMOR_CHAR_UUID, sizeof(TREMOR_CHAR_UUID));
-        UUID dyskinesiaUUID(DYSKINESIA_CHAR_UUID, sizeof(DYSKINESIA_CHAR_UUID));
-        UUID fogUUID(FOG_CHAR_UUID, sizeof(FOG_CHAR_UUID));
+        // Set advertising payload with device name
+        error = bleInstance->gap().setAdvertisingPayload(
+            LEGACY_ADVERTISING_HANDLE,
+            AdvertisingDataSimpleBuilder<LEGACY_ADVERTISING_MAX_SIZE>()
+                .setFlags()
+                .setName(DEVICE_NAME, true)
+                .getAdvertisingData()
+        );
+        if (error != BLE_ERROR_NONE) {
+            printf("Failed to set advertising payload: %d\r\n", error);
+            return false;
+        }
+        
+        // Create UUIDs for service and characteristics (128-bit UUIDs)
+        // UUID format: 16 bytes, MSB (Most Significant Byte first)
+        UUID::LongUUIDBytes_t serviceUUIDBytes;
+        UUID::LongUUIDBytes_t tremorUUIDBytes;
+        UUID::LongUUIDBytes_t dyskinesiaUUIDBytes;
+        UUID::LongUUIDBytes_t fogUUIDBytes;
+        
+        // Copy UUID arrays
+        memcpy(serviceUUIDBytes, SERVICE_UUID, 16);
+        memcpy(tremorUUIDBytes, TREMOR_CHAR_UUID, 16);
+        memcpy(dyskinesiaUUIDBytes, DYSKINESIA_CHAR_UUID, 16);
+        memcpy(fogUUIDBytes, FOG_CHAR_UUID, 16);
+        
+        UUID serviceUUID(serviceUUIDBytes, UUID::MSB);
+        UUID tremorUUID(tremorUUIDBytes, UUID::MSB);
+        UUID dyskinesiaUUID(dyskinesiaUUIDBytes, UUID::MSB);
+        UUID fogUUID(fogUUIDBytes, UUID::MSB);
         
         // Create characteristics (readable and notifiable)
         // Each characteristic stores 1 byte: detection status (0 or 1)
-        tremorChar = new GattCharacteristic(
+        GattCharacteristic* tremorCharPtr = new GattCharacteristic(
             tremorUUID,              // Characteristic UUID
             &tremorStatus,           // Initial value pointer
             1,                       // Current length (bytes)
@@ -77,8 +120,9 @@ bool BLEManager::begin() {
             GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_READ |   // Can be read
             GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY   // Can send notifications
         );
+        this->tremorChar = static_cast<void*>(tremorCharPtr);
         
-        dyskinesiaChar = new GattCharacteristic(
+        GattCharacteristic* dyskinesiaCharPtr = new GattCharacteristic(
             dyskinesiaUUID,
             &dyskinesiaStatus,
             1,
@@ -86,8 +130,9 @@ bool BLEManager::begin() {
             GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_READ | 
             GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY
         );
+        this->dyskinesiaChar = static_cast<void*>(dyskinesiaCharPtr);
         
-        fogChar = new GattCharacteristic(
+        GattCharacteristic* fogCharPtr = new GattCharacteristic(
             fogUUID,
             &fogStatus,
             1,
@@ -95,20 +140,22 @@ bool BLEManager::begin() {
             GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_READ | 
             GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY
         );
+        this->fogChar = static_cast<void*>(fogCharPtr);
         
         // Create service containing all three characteristics
-        GattCharacteristic* characteristics[] = {tremorChar, dyskinesiaChar, fogChar};
-        symptomService = new GattService(serviceUUID, characteristics, 3);
+        GattCharacteristic* characteristics[] = {tremorCharPtr, dyskinesiaCharPtr, fogCharPtr};
+        GattService* servicePtr = new GattService(serviceUUID, characteristics, 3);
+        this->symptomService = static_cast<void*>(servicePtr);
         
         // Add service to GATT server
-        error = ble->gattServer().addService(*symptomService);
+        error = bleInstance->gattServer().addService(*servicePtr);
         if (error != BLE_ERROR_NONE) {
             printf("Failed to add BLE service: %d\r\n", error);
             return false;
         }
         
         // Start BLE advertising (makes device discoverable)
-        error = ble->gap().startAdvertising();
+        error = bleInstance->gap().startAdvertising(LEGACY_ADVERTISING_HANDLE);
         if (error != BLE_ERROR_NONE) {
             printf("Failed to start BLE advertising: %d\r\n", error);
             return false;
@@ -136,8 +183,10 @@ bool BLEManager::begin() {
  */
 void BLEManager::update() {
     #ifdef MBED_OS
-        if (ble) {
-            ble->processEvents();  // Process pending BLE events
+        using namespace ble;
+        if (this->ble) {
+            BLE* bleInstance = static_cast<BLE*>(this->ble);
+            bleInstance->processEvents();  // Process pending BLE events
         }
     #else
         // No event processing needed in simulation mode
@@ -175,39 +224,35 @@ void BLEManager::updateCharacteristics(bool tremorDetected, float tremorIntensit
     fogIntensityByte = (uint8_t)(fogIntensity * 255);
     
     #ifdef MBED_OS
-        if (ble && initialized) {
-            // Update characteristics and notify connected clients
-            ble_error_t error;
+        using namespace ble;
+        if (this->ble && initialized && this->tremorChar && this->dyskinesiaChar && this->fogChar) {
+            BLE* bleInstance = static_cast<BLE*>(this->ble);
+            GattCharacteristic* tremorCharPtr = static_cast<GattCharacteristic*>(this->tremorChar);
+            GattCharacteristic* dyskinesiaCharPtr = static_cast<GattCharacteristic*>(this->dyskinesiaChar);
+            GattCharacteristic* fogCharPtr = static_cast<GattCharacteristic*>(this->fogChar);
             
+            // Update characteristics and notify connected clients
             // Write tremor status to characteristic
-            error = ble->gattServer().write(
-                tremorChar->getValueHandle(),  // Characteristic handle
+            // Notifications are sent automatically if client is subscribed
+            (void)bleInstance->gattServer().write(
+                tremorCharPtr->getValueHandle(),  // Characteristic handle
                 &tremorStatus,                 // Data to write
                 1                               // Data length (bytes)
             );
-            if (error == BLE_ERROR_NONE) {
-                ble->gattServer().handleDataSent();  // Trigger notification if subscribed
-            }
             
             // Write dyskinesia status to characteristic
-            error = ble->gattServer().write(
-                dyskinesiaChar->getValueHandle(),
+            (void)bleInstance->gattServer().write(
+                dyskinesiaCharPtr->getValueHandle(),
                 &dyskinesiaStatus,
                 1
             );
-            if (error == BLE_ERROR_NONE) {
-                ble->gattServer().handleDataSent();
-            }
             
             // Write FOG status to characteristic
-            error = ble->gattServer().write(
-                fogChar->getValueHandle(),
+            (void)bleInstance->gattServer().write(
+                fogCharPtr->getValueHandle(),
                 &fogStatus,
                 1
             );
-            if (error == BLE_ERROR_NONE) {
-                ble->gattServer().handleDataSent();
-            }
         }
     #else
         // Print data in simulation mode
@@ -219,4 +264,34 @@ void BLEManager::updateCharacteristics(bool tremorDetected, float tremorIntensit
         }
     #endif
 }
+
+// UUID and device name definitions
+#ifdef MBED_OS
+const char* BLEManager::DEVICE_NAME = "ParkinsonDetector";
+
+// 128-bit UUIDs for service and characteristics
+// Service UUID: 19B10000-E8F2-537E-4F6C-D104768A1214
+const uint8_t BLEManager::SERVICE_UUID[] = {
+    0x19, 0xB1, 0x00, 0x00, 0xE8, 0xF2, 0x53, 0x7E,
+    0x4F, 0x6C, 0xD1, 0x04, 0x76, 0x8A, 0x12, 0x14
+};
+
+// Tremor Characteristic UUID: 19B10001-E8F2-537E-4F6C-D104768A1214
+const uint8_t BLEManager::TREMOR_CHAR_UUID[] = {
+    0x19, 0xB1, 0x00, 0x01, 0xE8, 0xF2, 0x53, 0x7E,
+    0x4F, 0x6C, 0xD1, 0x04, 0x76, 0x8A, 0x12, 0x14
+};
+
+// Dyskinesia Characteristic UUID: 19B10002-E8F2-537E-4F6C-D104768A1214
+const uint8_t BLEManager::DYSKINESIA_CHAR_UUID[] = {
+    0x19, 0xB1, 0x00, 0x02, 0xE8, 0xF2, 0x53, 0x7E,
+    0x4F, 0x6C, 0xD1, 0x04, 0x76, 0x8A, 0x12, 0x14
+};
+
+// FOG Characteristic UUID: 19B10003-E8F2-537E-4F6C-D104768A1214
+const uint8_t BLEManager::FOG_CHAR_UUID[] = {
+    0x19, 0xB1, 0x00, 0x03, 0xE8, 0xF2, 0x53, 0x7E,
+    0x4F, 0x6C, 0xD1, 0x04, 0x76, 0x8A, 0x12, 0x14
+};
+#endif
 

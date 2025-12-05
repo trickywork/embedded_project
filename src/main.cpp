@@ -16,6 +16,9 @@
 #include "SensorManager.h"
 #include "SymptomDetector.h"
 #include "BLEManager.h"
+#ifdef MBED_OS
+#include <chrono>
+#endif
 
 // Global objects for sensor management, symptom detection, and BLE communication
 SensorManager sensorManager;
@@ -72,7 +75,12 @@ int main() {
     
     // Main processing loop
     while (true) {
+        // Use elapsed_time() instead of deprecated read_ms()
+        #ifdef MBED_OS
+        int currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(timer.elapsed_time()).count();
+        #else
         int currentTime = timer.read_ms();
+        #endif
         
         // Sample data at 52Hz (every ~19.23ms)
         if (currentTime - lastSampleTime >= SAMPLE_INTERVAL_MS) {

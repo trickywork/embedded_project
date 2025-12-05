@@ -15,7 +15,15 @@
 #ifndef BLE_MANAGER_H
 #define BLE_MANAGER_H
 
+#ifdef MBED_OS
+#include <mbed.h>
+// Include BLE headers in correct order
+#include "ble/BLE.h"
+#include "ble/gatt/GattCharacteristic.h"
+#include "ble/gatt/GattService.h"
+#else
 #include "mbed_compat.h"
+#endif
 
 /**
  * @class BLEManager
@@ -69,12 +77,9 @@ private:
     uint8_t fogIntensityByte;       // FOG intensity (0-255)
     
     // Hardware-specific BLE objects (only compiled for MBED_OS)
+    // Using void* to avoid header inclusion issues, cast in .cpp file
     #ifdef MBED_OS
-    #include "ble/BLE.h"
-    #include "ble/Gap.h"
-    #include "ble/GattServer.h"
-    
-    BLE* ble;  // BLE instance pointer
+    void* ble;  // BLE instance pointer (cast to ble::BLE* in implementation)
     
     // BLE Service and Characteristic UUIDs (128-bit UUIDs)
     // Service UUID: Main container for all characteristics
@@ -85,11 +90,11 @@ private:
     static const uint8_t DYSKINESIA_CHAR_UUID[];
     static const uint8_t FOG_CHAR_UUID[];
     
-    // GATT objects for BLE communication
-    GattCharacteristic* tremorChar;      // Tremor characteristic
-    GattCharacteristic* dyskinesiaChar;  // Dyskinesia characteristic
-    GattCharacteristic* fogChar;          // FOG characteristic
-    GattService* symptomService;          // Main service containing all characteristics
+    // GATT objects for BLE communication (cast in implementation)
+    void* tremorChar;      // Tremor characteristic (cast to ble::GattCharacteristic*)
+    void* dyskinesiaChar;  // Dyskinesia characteristic
+    void* fogChar;          // FOG characteristic
+    void* symptomService;  // Main service (cast to ble::GattService*)
     #endif
 };
 
