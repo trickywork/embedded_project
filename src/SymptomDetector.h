@@ -37,6 +37,7 @@ private:
                   float* gyroX, float* gyroY, float* gyroZ, int size);
     
     float calculateIntensity(float* data, int size, float minFreq, float maxFreq);
+    float calculateIntensity(float* dataX, float* dataY, float* dataZ, int size, float minFreq, float maxFreq);
     float calculateFOGIntensity(float* accelMagnitude, int size);
     float calculateVariance(float* x, float* y, float* z, int size);
     

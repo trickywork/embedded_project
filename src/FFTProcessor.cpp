@@ -81,7 +81,8 @@ void FFTProcessor::fft(std::complex<float>* x, int n) {
     
     // 合并
     for (int k = 0; k < n/2; k++) {
-        std::complex<float> t = std::polar(1.0f, -2.0f * M_PI * k / n) * odd[k];
+        float angle = -2.0f * static_cast<float>(M_PI) * static_cast<float>(k) / static_cast<float>(n);
+        std::complex<float> t = std::polar(1.0f, angle) * odd[k];
         x[k] = even[k] + t;
         x[k + n/2] = even[k] - t;
     }
