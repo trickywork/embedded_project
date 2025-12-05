@@ -1,100 +1,205 @@
-# 帕金森症状检测系统
+# Parkinson's Disease Symptom Detection System
 
-基于STM32和Mbed框架的嵌入式系统，用于检测帕金森病相关症状：
-- **震颤 (Tremor)**: 3-5Hz频率范围的节律性振荡
-- **运动障碍 (Dyskinesia)**: 5-7Hz频率范围的舞蹈样运动
-- **冻结步态 (Freezing of Gait, FOG)**: 行走后突然的身体冻结
+An embedded system based on STM32 and Mbed framework for real-time detection of Parkinson's disease symptoms using accelerometer and gyroscope data.
 
-## 项目结构
+## Overview
+
+This project implements a wearable device that monitors and detects three primary symptoms of Parkinson's disease:
+
+- **Tremor**: Rhythmic oscillations in the frequency range of 3-5Hz, typically affecting the dominant arm
+- **Dyskinesia**: Dance-like movements in the frequency range of 5-7Hz, often caused by excessive dopamine medication
+- **Freezing of Gait (FOG)**: Sudden freezing of the body after a period of walking, a late-stage symptom
+
+## Key Features
+
+1. **High-Frequency Data Acquisition**: 52Hz sampling rate with 3-second analysis windows (156 samples)
+2. **FFT-Based Frequency Analysis**: Fast Fourier Transform to detect frequency-specific symptoms
+3. **Real-Time Symptom Detection**: Continuous monitoring with immediate detection results
+4. **BLE Communication**: Wireless transmission of detection results to mobile devices via three BLE characteristics
+5. **Simulation Mode**: Complete testing environment without hardware for algorithm development
+
+## Project Structure
 
 ```
 embedded/
-├── platformio.ini          # PlatformIO配置文件
+├── platformio.ini          # PlatformIO configuration file
 ├── src/
-│   ├── main.cpp            # 主程序
-│   ├── SensorManager.h/cpp # 传感器管理（支持模拟模式）
-│   ├── SymptomDetector.h/cpp # 症状检测算法
-│   ├── FFTProcessor.h/cpp    # FFT频率分析
-│   └── BLEManager.h/cpp      # BLE通信管理
+│   ├── main.cpp            # Main program for hardware deployment
+│   ├── main_test.cpp       # Test program for computer-side testing
+│   ├── SensorManager.h/cpp # Sensor management (hardware + simulation)
+│   ├── LSM6DSL.h/cpp       # LSM6DSL sensor driver (I2C communication)
+│   ├── SymptomDetector.h/cpp # Symptom detection algorithms
+│   ├── FFTProcessor.h/cpp  # FFT frequency analysis implementation
+│   ├── BLEManager.h/cpp    # BLE communication management
+│   └── mbed_compat.h       # Mbed compatibility layer for native testing
 ├── test/
-│   └── test_simulator.cpp    # 电脑端测试程序
+│   └── main_test.cpp       # Original test file
 └── README.md
 ```
 
-## 功能特性
+## Hardware Requirements
 
-1. **传感器数据采集**: 52Hz采样率，3秒数据窗口（156个样本）
-2. **FFT频率分析**: 检测特定频率范围内的能量
-3. **症状检测算法**:
-   - 震颤检测：3-5Hz频率分析
-   - 运动障碍检测：5-7Hz频率分析
-   - 冻结步态检测：步态分析 + 运动突然停止检测
-4. **BLE通信**: 三个BLE特征值传输检测结果
-5. **模拟模式**: 支持电脑端测试，无需硬件
+- **Development Board**: ST B-L475E-IOT01A1 (STM32L475VG IoT Discovery)
+- **Onboard Sensors**:
+  - LSM6DSL: 3-axis accelerometer and 3-axis gyroscope (I2C interface)
+- **Communication**: Integrated BLE module for wireless data transmission
+- **Power**: Can be powered by a simple power bank
 
-## 编译和运行
+## Algorithm Description
 
-### 在电脑上测试（模拟模式）
+### Tremor Detection (3-5Hz)
+- Uses FFT to analyze accelerometer data
+- Detects energy in the 3-5Hz frequency range
+- Threshold: Intensity > 0.25 and > 1.2x background noise
+- Typical frequency: 4Hz for Parkinson's tremor
+
+### Dyskinesia Detection (5-7Hz)
+- Uses FFT to analyze accelerometer data
+- Detects energy in the 5-7Hz frequency range
+- Threshold: Intensity > 0.25 and > 1.2x background noise
+- Typical frequency: 6Hz for dyskinetic movements
+
+### Freezing of Gait (FOG) Detection
+1. **Gait Analysis**: Detects steps and calculates cadence (steps per second)
+2. **Variance Analysis**: Calculates variance of acceleration and gyroscope data
+3. **Freezing Detection**: Identifies sudden stop after walking activity
+   - Condition 1: Previous walking activity (cadence > 0.3 steps/sec)
+   - Condition 2: Sudden stop (low variance in latter third of data window)
+   - Condition 3: Variance reduction (latter third < 50% of first third)
+
+## Building and Running
+
+### Computer-Side Testing (Simulation Mode)
+
+Test all algorithms without hardware:
 
 ```bash
-# 编译测试程序
+# Compile test program
 pio run -e native
 
-# 运行测试
+# Run tests
 pio run -e native -t exec
 ```
 
-### 在STM32开发板上运行
+The test program automatically runs four test scenarios:
+1. Normal data (low-amplitude random motion)
+2. Tremor detection (4Hz signal)
+3. Dyskinesia detection (6Hz signal)
+4. Freezing of gait (walking then freezing)
+
+### Hardware Deployment (ST B-L475E-IOT01A1)
 
 ```bash
-# 编译
+# Compile for STM32
 pio run -e disco_l475vg_iot01a
 
-# 上传到开发板
+# Upload to development board
 pio run -e disco_l475vg_iot01a -t upload
 
-# 监控串口输出
+# Monitor serial output (115200 baud)
 pio device monitor
 ```
 
-## 硬件要求
+## BLE Communication
 
-- STM32L475VG IoT Discovery开发板
-- 内置LSM6DSL加速度计/陀螺仪传感器
-- 内置BLE模块
+### Service and Characteristics
 
-## 算法说明
+- **Service UUID**: `19B10000-E8F2-537E-4F6C-D104768A1214`
+- **Tremor Characteristic**: `19B10001-E8F2-537E-4F6C-D104768A1214`
+- **Dyskinesia Characteristic**: `19B10002-E8F2-537E-4F6C-D104768A1214`
+- **FOG Characteristic**: `19B10003-E8F2-537E-4F6C-D104768A1214`
 
-### 震颤检测
-- 使用FFT分析加速度数据
-- 检测3-5Hz频率范围内的能量
-- 阈值：强度 > 0.3
+### Connecting with Mobile Device
 
-### 运动障碍检测
-- 使用FFT分析加速度数据
-- 检测5-7Hz频率范围内的能量
-- 阈值：强度 > 0.3
+1. **Using nRF Connect (Recommended)**:
+   - Download nRF Connect app
+   - Scan for "ParkinsonDetector"
+   - Connect and subscribe to notifications
+   - View real-time detection results
 
-### 冻结步态检测
-1. 步态分析：检测步数和步频
-2. 运动方差分析：计算加速度和角速度的方差
-3. 冻结判断：之前有步态活动 + 当前运动方差很小
+2. **Data Format**:
+   - Each characteristic contains:
+     - Status byte: 0 = not detected, 1 = detected
+     - Intensity byte: 0-255 (0.0-1.0 normalized)
 
-## 待完成的工作
+## Configuration
 
-1. **硬件集成**: 实现STM32 L475VG IoT Discovery板的传感器读取
-2. **BLE实现**: 完成实际的BLE服务和特征值配置
-3. **参数调优**: 根据实际测试调整检测阈值
-4. **用户界面**: 添加LED指示和按钮控制
+### Sensor Configuration (LSM6DSL)
 
-## 测试
+- **Accelerometer**: ±2g range, 52Hz ODR
+- **Gyroscope**: ±250dps range, 52Hz ODR
+- **I2C Speed**: 400kHz
+- **I2C Address**: Auto-detected (0xD6 or 0xD4)
 
-运行测试程序验证检测算法：
+### Detection Thresholds
 
+Current thresholds (can be adjusted in `SymptomDetector.cpp`):
+- Tremor: Intensity > 0.25 and > 1.2x background noise
+- Dyskinesia: Intensity > 0.25 and > 1.2x background noise
+- FOG: Cadence > 0.3 steps/sec, variance reduction > 50%
+
+## Testing
+
+### Test Scenarios
+
+The test program (`main_test.cpp`) includes:
+
+1. **Normal Data Test**: Verifies system doesn't false-positive on normal movement
+2. **Tremor Test**: Generates 4Hz signal to verify tremor detection
+3. **Dyskinesia Test**: Generates 6Hz signal to verify dyskinesia detection
+4. **FOG Test**: Simulates walking then freezing to verify FOG detection
+
+### Expected Results
+
+- ✅ Tremor detection: Successfully detects 4Hz signals
+- ✅ Dyskinesia detection: Successfully detects 6Hz signals
+- ⚠️ FOG detection: May require further optimization based on real-world data
+
+## Troubleshooting
+
+### Sensor Initialization Fails
+
+**Symptoms**: Serial output shows "Sensor initialization failed!"
+
+**Solutions**:
+1. Code automatically tries multiple I2C configurations
+2. Check hardware connections
+3. Verify sensor is functioning (check WHO_AM_I register)
+
+### BLE Initialization Fails
+
+**Symptoms**: Serial output shows "BLE initialization failed"
+
+**Solutions**:
+1. Check Mbed BLE library is properly linked
+2. Verify UUIDs are unique
+3. Restart development board
+
+### Compilation Errors
+
+**Solutions**:
 ```bash
-cd test
-pio run -e native -t exec
+# Clean and rebuild
+pio run -e disco_l475vg_iot01a -t clean
+pio run -e disco_l475vg_iot01a
 ```
 
-测试程序会生成模拟的传感器数据，验证三种症状的检测功能。
+## Future Enhancements
 
+1. **LED Indicators**: Visual feedback for detected symptoms
+2. **Button Control**: Start/stop detection via onboard buttons
+3. **Data Logging**: Store detection results to Flash memory
+4. **Low Power Optimization**: Extend battery life
+5. **Calibration**: Sensor calibration functionality
+6. **Machine Learning**: Advanced pattern recognition for improved accuracy
+
+## License
+
+This project is developed for educational purposes as part of an embedded systems course.
+
+## References
+
+- ST B-L475E-IOT01A1 Discovery Board User Manual
+- LSM6DSL Datasheet
+- Mbed OS Documentation
+- PlatformIO Documentation

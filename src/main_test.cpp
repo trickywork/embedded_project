@@ -1,3 +1,18 @@
+/**
+ * @file main_test.cpp
+ * @brief Test program for computer-side algorithm validation
+ * 
+ * This program tests symptom detection algorithms without hardware.
+ * It generates simulated sensor data with known frequencies to verify
+ * that detection algorithms work correctly.
+ * 
+ * Test scenarios:
+ * 1. Normal data (low-amplitude random motion)
+ * 2. Tremor signal (4Hz)
+ * 3. Dyskinesia signal (6Hz)
+ * 4. Freezing of Gait (walking then freezing)
+ */
+
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
@@ -8,30 +23,49 @@
 #include "BLEManager.h"
 #include "mbed_compat.h"
 
-// 测试数据生成函数
+/**
+ * @brief Generate tremor test data (4Hz signal)
+ * 
+ * Generates a 4Hz sinusoidal signal to test tremor detection.
+ * This simulates typical Parkinson's tremor frequency.
+ * 
+ * @param sensor Sensor manager reference
+ * @param durationMs Duration of test signal in milliseconds
+ */
 void generateTremorData(SensorManager& sensor, int durationMs) {
-    printf("生成震颤测试数据 (4Hz, 持续%dms)...\n", durationMs);
+    printf("Generating tremor test data (4Hz, duration %dms)...\n", durationMs);
     Timer timer;
     timer.start();
     
     while (timer.read_ms() < durationMs) {
         int timeMs = timer.read_ms();
+        // Generate 4Hz sinusoidal signal (tremor frequency)
         float accelX = 0.2f * sin(2.0f * M_PI * 4.0f * timeMs / 1000.0f);
         float accelY = 0.2f * sin(2.0f * M_PI * 4.0f * timeMs / 1000.0f + M_PI/4);
-        float accelZ = 1.0f; // 重力
+        float accelZ = 1.0f; // Gravity component
         
         sensor.setSimulationData(accelX, accelY, accelZ, 0, 0, 0);
-        thread_sleep_for(1000 / 52); // 52Hz
+        thread_sleep_for(1000 / 52); // 52Hz sampling rate
     }
 }
 
+/**
+ * @brief Generate dyskinesia test data (6Hz signal)
+ * 
+ * Generates a 6Hz sinusoidal signal to test dyskinesia detection.
+ * This simulates typical dyskinetic movement frequency.
+ * 
+ * @param sensor Sensor manager reference
+ * @param durationMs Duration of test signal in milliseconds
+ */
 void generateDyskinesiaData(SensorManager& sensor, int durationMs) {
-    printf("生成运动障碍测试数据 (6Hz, 持续%dms)...\n", durationMs);
+    printf("Generating dyskinesia test data (6Hz, duration %dms)...\n", durationMs);
     Timer timer;
     timer.start();
     
     while (timer.read_ms() < durationMs) {
         int timeMs = timer.read_ms();
+        // Generate 6Hz sinusoidal signal (dyskinesia frequency)
         float accelX = 0.3f * sin(2.0f * M_PI * 6.0f * timeMs / 1000.0f);
         float accelY = 0.3f * sin(2.0f * M_PI * 6.0f * timeMs / 1000.0f + M_PI/3);
         float accelZ = 1.0f;
@@ -41,8 +75,18 @@ void generateDyskinesiaData(SensorManager& sensor, int durationMs) {
     }
 }
 
+/**
+ * @brief Generate Freezing of Gait test data
+ * 
+ * Generates data that simulates walking then sudden freezing:
+ * - First half: Walking pattern (oscillating signal)
+ * - Second half: Freezing (minimal movement)
+ * 
+ * @param sensor Sensor manager reference
+ * @param durationMs Duration of test signal in milliseconds
+ */
 void generateFOGData(SensorManager& sensor, int durationMs) {
-    printf("生成冻结步态测试数据 (先行走后冻结, 持续%dms)...\n", durationMs);
+    printf("Generating FOG test data (walking then freezing, duration %dms)...\n", durationMs);
     Timer timer;
     timer.start();
     
@@ -51,12 +95,12 @@ void generateFOGData(SensorManager& sensor, int durationMs) {
         float accelX, accelY, accelZ;
         
         if (timeMs < durationMs / 2) {
-            // 前半段：模拟行走
+            // First half: Simulate walking (oscillating signal at 2Hz)
             accelX = 0.5f * sin(2.0f * M_PI * 2.0f * timeMs / 1000.0f);
             accelY = 0.5f * sin(2.0f * M_PI * 2.0f * timeMs / 1000.0f + M_PI/2);
             accelZ = 1.0f;
         } else {
-            // 后半段：冻结
+            // Second half: Freezing (minimal movement)
             accelX = 0.01f;
             accelY = 0.01f;
             accelZ = 1.0f;
@@ -67,45 +111,69 @@ void generateFOGData(SensorManager& sensor, int durationMs) {
     }
 }
 
+/**
+ * @brief Generate normal data (low-amplitude random motion)
+ * 
+ * Generates random low-amplitude motion to test that normal movement
+ * does not trigger false positives.
+ * 
+ * @param sensor Sensor manager reference
+ * @param durationMs Duration of test signal in milliseconds
+ */
 void generateNormalData(SensorManager& sensor, int durationMs) {
-    printf("生成正常数据 (低幅度随机运动, 持续%dms)...\n", durationMs);
+    printf("Generating normal data (low-amplitude random motion, duration %dms)...\n", durationMs);
     Timer timer;
     timer.start();
     srand(time(nullptr));
     
     while (timer.read_ms() < durationMs) {
-        // 生成低幅度的随机运动
-        float accelX = (rand() % 20 - 10) / 100.0f;
+        // Generate low-amplitude random motion (simulating normal activity)
+        float accelX = (rand() % 20 - 10) / 100.0f;  // -0.1 to 0.1 g
         float accelY = (rand() % 20 - 10) / 100.0f;
-        float accelZ = 1.0f + (rand() % 10 - 5) / 100.0f;
+        float accelZ = 1.0f + (rand() % 10 - 5) / 100.0f;  // Gravity with small variation
         
         sensor.setSimulationData(accelX, accelY, accelZ, 0, 0, 0);
         thread_sleep_for(1000 / 52);
     }
 }
 
+/**
+ * @brief Main test program entry point
+ * 
+ * Runs a series of test scenarios to validate detection algorithms:
+ * 1. Normal data test (should not detect symptoms)
+ * 2. Tremor test (should detect tremor)
+ * 3. Dyskinesia test (should detect dyskinesia)
+ * 4. FOG test (should detect freezing of gait)
+ * 
+ * Each test generates simulated sensor data and runs detection analysis.
+ */
 int main() {
     printf("========================================\n");
-    printf("  帕金森症状检测系统 - 电脑端测试\n");
+    printf("  Parkinson's Symptom Detection System\n");
+    printf("         Computer-Side Testing\n");
     printf("========================================\n\n");
     
-    // 初始化随机数种子
+    // Initialize random number seed
     srand(time(nullptr));
     
+    // Create system components
     SensorManager sensorManager;
     SymptomDetector symptomDetector;
     BLEManager bleManager;
     
-    // 初始化
-    printf("初始化系统组件...\n");
+    // Initialize components
+    printf("Initializing system components...\n");
     sensorManager.begin();
     symptomDetector.begin();
     bleManager.begin();
     
+    // Enable simulation mode
     sensorManager.setSimulationMode(true);
-    printf("系统已切换到模拟模式\n\n");
+    printf("System switched to simulation mode\n\n");
     
-    const int WINDOW_SIZE = 156; // 3秒 * 52Hz
+    // Data buffer for 3-second window (156 samples at 52Hz)
+    const int WINDOW_SIZE = 156; // 3 seconds * 52 Hz
     float accelX[WINDOW_SIZE];
     float accelY[WINDOW_SIZE];
     float accelZ[WINDOW_SIZE];
@@ -113,8 +181,8 @@ int main() {
     float gyroY[WINDOW_SIZE];
     float gyroZ[WINDOW_SIZE];
     
-    // 测试1: 正常数据（不应检测到症状）
-    printf("========== 测试1: 正常数据 ==========\n");
+    // Test 1: Normal data (should not detect symptoms)
+    printf("========== Test 1: Normal Data ==========\n");
     generateNormalData(sensorManager, 3000);
     
     for (int i = 0; i < WINDOW_SIZE; i++) {
@@ -131,19 +199,19 @@ int main() {
     SymptomResults results = symptomDetector.analyze(
         accelX, accelY, accelZ, gyroX, gyroY, gyroZ, WINDOW_SIZE);
     
-    printf("检测结果:\n");
-    printf("  震颤: %s (强度: %.2f)\n", 
-           results.tremorDetected ? "检测到" : "未检测到",
+    printf("Detection Results:\n");
+    printf("  Tremor: %s (Intensity: %.2f)\n", 
+           results.tremorDetected ? "DETECTED" : "NOT DETECTED",
            results.tremorIntensity);
-    printf("  运动障碍: %s (强度: %.2f)\n", 
-           results.dyskinesiaDetected ? "检测到" : "未检测到",
+    printf("  Dyskinesia: %s (Intensity: %.2f)\n", 
+           results.dyskinesiaDetected ? "DETECTED" : "NOT DETECTED",
            results.dyskinesiaIntensity);
-    printf("  冻结步态: %s (强度: %.2f)\n\n", 
-           results.fogDetected ? "检测到" : "未检测到",
+    printf("  Freezing of Gait: %s (Intensity: %.2f)\n\n", 
+           results.fogDetected ? "DETECTED" : "NOT DETECTED",
            results.fogIntensity);
     
-    // 测试2: 震颤检测
-    printf("========== 测试2: 震颤检测 (4Hz) ==========\n");
+    // Test 2: Tremor detection
+    printf("========== Test 2: Tremor Detection (4Hz) ==========\n");
     generateTremorData(sensorManager, 3000);
     
     for (int i = 0; i < WINDOW_SIZE; i++) {
@@ -160,20 +228,20 @@ int main() {
     results = symptomDetector.analyze(
         accelX, accelY, accelZ, gyroX, gyroY, gyroZ, WINDOW_SIZE);
     
-    printf("检测结果:\n");
-    printf("  震颤: %s (强度: %.2f) %s\n", 
-           results.tremorDetected ? "检测到" : "未检测到",
+    printf("Detection Results:\n");
+    printf("  Tremor: %s (Intensity: %.2f) %s\n", 
+           results.tremorDetected ? "DETECTED" : "NOT DETECTED",
            results.tremorIntensity,
            results.tremorDetected ? "✓" : "✗");
-    printf("  运动障碍: %s (强度: %.2f)\n", 
-           results.dyskinesiaDetected ? "检测到" : "未检测到",
+    printf("  Dyskinesia: %s (Intensity: %.2f)\n", 
+           results.dyskinesiaDetected ? "DETECTED" : "NOT DETECTED",
            results.dyskinesiaIntensity);
-    printf("  冻结步态: %s (强度: %.2f)\n\n", 
-           results.fogDetected ? "检测到" : "未检测到",
+    printf("  Freezing of Gait: %s (Intensity: %.2f)\n\n", 
+           results.fogDetected ? "DETECTED" : "NOT DETECTED",
            results.fogIntensity);
     
-    // 测试3: 运动障碍检测
-    printf("========== 测试3: 运动障碍检测 (6Hz) ==========\n");
+    // Test 3: Dyskinesia detection
+    printf("========== Test 3: Dyskinesia Detection (6Hz) ==========\n");
     generateDyskinesiaData(sensorManager, 3000);
     
     for (int i = 0; i < WINDOW_SIZE; i++) {
@@ -190,20 +258,20 @@ int main() {
     results = symptomDetector.analyze(
         accelX, accelY, accelZ, gyroX, gyroY, gyroZ, WINDOW_SIZE);
     
-    printf("检测结果:\n");
-    printf("  震颤: %s (强度: %.2f)\n", 
-           results.tremorDetected ? "检测到" : "未检测到",
+    printf("Detection Results:\n");
+    printf("  Tremor: %s (Intensity: %.2f)\n", 
+           results.tremorDetected ? "DETECTED" : "NOT DETECTED",
            results.tremorIntensity);
-    printf("  运动障碍: %s (强度: %.2f) %s\n", 
-           results.dyskinesiaDetected ? "检测到" : "未检测到",
+    printf("  Dyskinesia: %s (Intensity: %.2f) %s\n", 
+           results.dyskinesiaDetected ? "DETECTED" : "NOT DETECTED",
            results.dyskinesiaIntensity,
            results.dyskinesiaDetected ? "✓" : "✗");
-    printf("  冻结步态: %s (强度: %.2f)\n\n", 
-           results.fogDetected ? "检测到" : "未检测到",
+    printf("  Freezing of Gait: %s (Intensity: %.2f)\n\n", 
+           results.fogDetected ? "DETECTED" : "NOT DETECTED",
            results.fogIntensity);
     
-    // 测试4: 冻结步态检测
-    printf("========== 测试4: 冻结步态检测 ==========\n");
+    // Test 4: Freezing of Gait detection
+    printf("========== Test 4: Freezing of Gait Detection ==========\n");
     generateFOGData(sensorManager, 3000);
     
     for (int i = 0; i < WINDOW_SIZE; i++) {
@@ -220,20 +288,20 @@ int main() {
     results = symptomDetector.analyze(
         accelX, accelY, accelZ, gyroX, gyroY, gyroZ, WINDOW_SIZE);
     
-    printf("检测结果:\n");
-    printf("  震颤: %s (强度: %.2f)\n", 
-           results.tremorDetected ? "检测到" : "未检测到",
+    printf("Detection Results:\n");
+    printf("  Tremor: %s (Intensity: %.2f)\n", 
+           results.tremorDetected ? "DETECTED" : "NOT DETECTED",
            results.tremorIntensity);
-    printf("  运动障碍: %s (强度: %.2f)\n", 
-           results.dyskinesiaDetected ? "检测到" : "未检测到",
+    printf("  Dyskinesia: %s (Intensity: %.2f)\n", 
+           results.dyskinesiaDetected ? "DETECTED" : "NOT DETECTED",
            results.dyskinesiaIntensity);
-    printf("  冻结步态: %s (强度: %.2f) %s\n\n", 
-           results.fogDetected ? "检测到" : "未检测到",
+    printf("  Freezing of Gait: %s (Intensity: %.2f) %s\n\n", 
+           results.fogDetected ? "DETECTED" : "NOT DETECTED",
            results.fogIntensity,
            results.fogDetected ? "✓" : "✗");
     
     printf("========================================\n");
-    printf("  所有测试完成！\n");
+    printf("  All tests completed!\n");
     printf("========================================\n");
     
     return 0;
