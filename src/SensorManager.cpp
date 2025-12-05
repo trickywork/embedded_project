@@ -4,6 +4,9 @@
 #ifdef NATIVE_TEST_MODE
 #include <sys/time.h>
 #endif
+#ifdef MBED_OS
+#include "LSM6DSL.h"
+#endif
 
 SensorManager::SensorManager() : simulationMode(false) {
     simulatedData = {0, 0, 0, 0, 0, 0};
@@ -11,6 +14,10 @@ SensorManager::SensorManager() : simulationMode(false) {
     simTimerStarted = false;
     gettimeofday(&simStartTime, nullptr);
     simTimerStarted = true;
+    #endif
+    #ifdef MBED_OS
+    i2c = nullptr;
+    lsm6dsl = nullptr;
     #endif
 }
 
@@ -78,10 +85,21 @@ SensorData SensorManager::read() {
     
     #ifdef MBED_OS
         // 实际硬件读取
-        // TODO: 实现实际的传感器读取代码
-        // STM32 L475VG IoT Discovery板有LSM6DSL传感器
-        SensorData data = {0, 0, 0, 0, 0, 0};
-        // 这里需要添加实际的传感器读取代码
+        if (lsm6dsl == nullptr) {
+            SensorData data = {0, 0, 0, 0, 0, 0};
+            return data;
+        }
+        
+        SensorData data;
+        if (!lsm6dsl->readAccel(data.accelX, data.accelY, data.accelZ)) {
+            data = {0, 0, 0, 0, 0, 0};
+            return data;
+        }
+        
+        if (!lsm6dsl->readGyro(data.gyroX, data.gyroY, data.gyroZ)) {
+            data.gyroX = data.gyroY = data.gyroZ = 0;
+        }
+        
         return data;
     #else
         return simulatedData;
@@ -90,10 +108,46 @@ SensorData SensorManager::read() {
 
 #ifdef MBED_OS
 void SensorManager::initHardware() {
-    // STM32硬件初始化
-    // TODO: 根据STM32 L475VG IoT Discovery板添加传感器初始化代码
-    // 该板有LSM6DSL加速度计/陀螺仪传感器
-    // 需要配置I2C接口和传感器寄存器
+    // ST B-L475E-IOT01A1板使用I2C1接口连接LSM6DSL
+    // 根据板级支持包，使用预定义的I2C引脚
+    // 如果预定义不可用，尝试: PB6(SCL), PB7(SDA) 或 PC0(SCL), PC1(SDA)
+    
+    // 方法1: 尝试使用Mbed预定义的I2C引脚（如果板级支持包提供）
+    // i2c = new I2C(I2C_SDA, I2C_SCL);
+    
+    // 方法2: 使用标准I2C1引脚 (PB6=SCL, PB7=SDA)
+    i2c = new I2C(PB_7, PB_6);  // SDA, SCL (I2C1)
+    
+    // 如果上述失败，可以尝试I2C3 (PC0=SCL, PC1=SDA)
+    // i2c = new I2C(PC_1, PC_0);  // SDA, SCL (I2C3)
+    
+    i2c->frequency(400000);  // 400kHz I2C速度
+    
+    // 创建LSM6DSL对象
+    lsm6dsl = new LSM6DSL(i2c);
+    
+    // 初始化传感器
+    if (!lsm6dsl->init()) {
+        printf("传感器初始化失败! 尝试备用I2C引脚...\r\n");
+        // 如果I2C1失败，尝试I2C3
+        delete i2c;
+        delete lsm6dsl;
+        
+        i2c = new I2C(PC_1, PC_0);  // I2C3: SDA, SCL
+        i2c->frequency(400000);
+        lsm6dsl = new LSM6DSL(i2c);
+        
+        if (!lsm6dsl->init()) {
+            printf("传感器初始化完全失败!\r\n");
+            delete lsm6dsl;
+            lsm6dsl = nullptr;
+            delete i2c;
+            i2c = nullptr;
+            return;
+        }
+    }
+    
+    printf("传感器初始化成功 (I2C地址: 0x%02X)\r\n", LSM6DSL_I2C_ADDRESS);
 }
 #endif
 

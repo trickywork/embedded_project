@@ -27,6 +27,8 @@ private:
     // 实际硬件初始化（STM32）
     #ifdef MBED_OS
     void initHardware();
+    I2C* i2c;
+    class LSM6DSL* lsm6dsl;
     #endif
     
     // 模拟数据生成（用于测试）
